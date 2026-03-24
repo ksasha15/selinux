@@ -200,4 +200,4 @@ semodule:  Failed!
 libsemanage.semanage_direct_remove_key: Removing last nginx module (no other nginx module exists at another priority).
 [root@selinux ~]#
 ```
-#### as
+#### Обеспечение работоспособности приложения при включенном SELinux
