@@ -201,3 +201,42 @@ libsemanage.semanage_direct_remove_key: Removing last nginx module (no other ngi
 [root@selinux ~]#
 ```
 #### Обеспечение работоспособности приложения при включенном SELinux
+В исходном состоянии обновление не проходит:
+```
+[vagrant@client ~]$     nsupdate -k /etc/named.zonetransfer.key
+>    server 192.168.50.10
+    zone ddns.lab
+    update add www.ddns.lab. 60 A 192.168.50.15
+    send
+> > > update failed: SERVFAIL
+>
+> quit
+[vagrant@client ~]$
+```
+Анализируем вывод audit2why сначала на клиенте, потом на сервере:
+```
+[vagrant@client ~]$ sudo -i
+[root@client ~]# cat /var/log/audit/audit.log | audit2why
+type=AVC msg=audit(1774764514.433:653): avc:  denied  { dac_read_search } for  pid=4453 comm="11-dhclient" capability=2  scontext=system_u:system_r:NetworkManager_dispatcher_dhclient_t:s0 tcontext=system_u:system_r:NetworkManager_dispatcher_dhclient_t:s0 tclass=capability permissive=0
+
+        Was caused by:
+                Missing type enforcement (TE) allow rule.
+
+                You can use audit2allow to generate a loadable module to allow this access.
+```
+```
+[vagrant@ns01 ~]$ sudo -i
+[root@ns01 ~]# cat /var/log/audit/audit.log | audit2why
+type=AVC msg=audit(1774764339.473:651): avc:  denied  { dac_read_search } for  pid=4448 comm="11-dhclient" capability=2  scontext=system_u:system_r:NetworkManager_dispatcher_dhclient_t:s0 tcontext=system_u:system_r:NetworkManager_dispatcher_dhclient_t:s0 tclass=capability permissive=0
+
+        Was caused by:
+                Missing type enforcement (TE) allow rule.
+
+                You can use audit2allow to generate a loadable module to allow this access.
+type=AVC msg=audit(1774765073.915:1729): avc:  denied  { write } for  pid=9184 comm="isc-net-0001" name="dynamic" dev="sda4" ino=4851 scontext=system_u:system_r:named_t:s0 tcontext=unconfined_u:object_r:named_conf_t:s0 tclass=dir permissive=0
+
+        Was caused by:
+                Missing type enforcement (TE) allow rule.
+
+                You can use audit2allow to generate a loadable module to allow this access.
+```
