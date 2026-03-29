@@ -240,3 +240,5 @@ type=AVC msg=audit(1774765073.915:1729): avc:  denied  { write } for  pid=9184 c
 
                 You can use audit2allow to generate a loadable module to allow this access.
 ```
+В логе на сервере мы видим, что ошибка в контексте безопасности. Целевой контекст _named_conf_t_.
+Для сравнения посмотрим существующую зону (localhost) и её контекст:
