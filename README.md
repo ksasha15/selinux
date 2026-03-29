@@ -240,5 +240,95 @@ type=AVC msg=audit(1774765073.915:1729): avc:  denied  { write } for  pid=9184 c
 
                 You can use audit2allow to generate a loadable module to allow this access.
 ```
-В логе на сервере мы видим, что ошибка в контексте безопасности. Целевой контекст _named_conf_t_.
+В логе на сервере мы видим, что ошибка в контексте безопасности. Целевой контекст _**named_conf_t**_.
 Для сравнения посмотрим существующую зону (localhost) и её контекст:
+[root@ns01 ~]# ls -alZ /var/named/named.localhost
+-rw-r-----. 1 root named system_u:object_r:named_zone_t:s0 152 Nov 13 08:16 /var/named/named.localhost
+[root@ns01 ~]#
+```
+У наших конфигов в /etc/named вместо типа _**named_zone_t**_ используется тип _**named_conf_t**_:
+```
+[root@ns01 ~]# ls -laZ /etc/named
+total 28
+drw-rwx---.  3 root named system_u:object_r:named_conf_t:s0      121 Mar 29 06:06 .
+drwxr-xr-x. 89 root root  system_u:object_r:etc_t:s0            8192 Mar 29 06:06 ..
+drw-rwx---.  2 root named unconfined_u:object_r:named_conf_t:s0   56 Mar 29 06:06 dynamic
+-rw-rw----.  1 root named system_u:object_r:named_conf_t:s0      784 Mar 29 06:06 named.50.168.192.rev
+-rw-rw----.  1 root named system_u:object_r:named_conf_t:s0      610 Mar 29 06:06 named.dns.lab
+-rw-rw----.  1 root named system_u:object_r:named_conf_t:s0      609 Mar 29 06:06 named.dns.lab.view1
+-rw-rw----.  1 root named system_u:object_r:named_conf_t:s0      657 Mar 29 06:06 named.newdns.lab
+[root@ns01 ~]#
+```
+[root@ns01 ~]# semanage fcontext -l | grep named
+<output omitted>
+/etc/named(/.*)?                                   all files          system_u:object_r:named_conf_t:s0
+<output omitted>
+/var/named(/.*)?                                   all files          system_u:object_r:named_zone_t:s0
+...
+```
+Исправляем ошибку:
+```
+[root@ns01 ~]#  chcon -R -t named_zone_t /etc/named
+[root@ns01 ~]# ls -laZ /etc/named
+total 28
+drw-rwx---.  3 root named system_u:object_r:named_zone_t:s0      121 Mar 29 06:06 .
+drwxr-xr-x. 89 root root  system_u:object_r:etc_t:s0            8192 Mar 29 06:06 ..
+drw-rwx---.  2 root named unconfined_u:object_r:named_zone_t:s0   56 Mar 29 06:06 dynamic
+-rw-rw----.  1 root named system_u:object_r:named_zone_t:s0      784 Mar 29 06:06 named.50.168.192.rev
+-rw-rw----.  1 root named system_u:object_r:named_zone_t:s0      610 Mar 29 06:06 named.dns.lab
+-rw-rw----.  1 root named system_u:object_r:named_zone_t:s0      609 Mar 29 06:06 named.dns.lab.view1
+-rw-rw----.  1 root named system_u:object_r:named_zone_t:s0      657 Mar 29 06:06 named.newdns.lab
+[root@ns01 ~]#
+```
+Снова пробуем обновить зону на клиенте:
+```[root@client ~]#    nsupdate -k /etc/named.zonetransfer.key
+>      server 192.168.50.10
+    zone ddns.lab
+    update add www.ddns.lab. 60 A 192.168.50.15
+    send> > >
+> quit
+[root@client ~]# dig www.ddns.lab
+
+; <<>> DiG 9.16.23-RH <<>> www.ddns.lab
+;; global options: +cmd
+;; Got answer:
+;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 21163
+;; flags: qr aa rd ra; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 1
+
+;; OPT PSEUDOSECTION:
+; EDNS: version: 0, flags:; udp: 1232
+; COOKIE: 1b8bf9e63094a6210100000069c8d0fbaeea41195b04d3fc (good)
+;; QUESTION SECTION:
+;www.ddns.lab.                  IN      A
+
+;; ANSWER SECTION:
+www.ddns.lab.           60      IN      A       192.168.50.15
+
+;; Query time: 4 msec
+;; SERVER: 192.168.50.10#53(192.168.50.10)
+;; WHEN: Sun Mar 29 07:12:59 UTC 2026
+;; MSG SIZE  rcvd: 85
+
+[root@client ~]#
+```
+Проверяем работу после перезагрузки:
+```
+[root@ns01 ~]# reboot
+Connection to 127.0.0.1 closed by remote host.
+administrator@testpc:~/vagrant_selinux_dns_problems$ vagrant ssh ns01
+Last login: Sun Mar 29 06:09:56 2026 from 10.0.2.2
+[vagrant@ns01 ~]$ ls -laZ /etc/named
+ls: cannot open directory '/etc/named': Permission denied
+[vagrant@ns01 ~]$ sudo -i
+[root@ns01 ~]# ls -laZ /etc/named
+total 28
+drw-rwx---.  3 root named system_u:object_r:named_zone_t:s0      121 Mar 29 06:06 .
+drwxr-xr-x. 89 root root  system_u:object_r:etc_t:s0            8192 Mar 29 07:20 ..
+drw-rwx---.  2 root named unconfined_u:object_r:named_zone_t:s0   88 Mar 29 07:12 dynamic
+-rw-rw----.  1 root named system_u:object_r:named_zone_t:s0      784 Mar 29 06:06 named.50.168.192.rev
+-rw-rw----.  1 root named system_u:object_r:named_zone_t:s0      610 Mar 29 06:06 named.dns.lab
+-rw-rw----.  1 root named system_u:object_r:named_zone_t:s0      609 Mar 29 06:06 named.dns.lab.view1
+-rw-rw----.  1 root named system_u:object_r:named_zone_t:s0      657 Mar 29 06:06 named.newdns.lab
+[root@ns01 ~]#
+```
+После перезагрузки настройки сохранились. 
